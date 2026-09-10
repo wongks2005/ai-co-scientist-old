@@ -1,0 +1,108 @@
+name: AI-Co-Scientist CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+
+  ci:
+
+    if: github.repository != 'wongks2005/ai-co-scientist-old'
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout source code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Lint (optional)
+        run: |
+          pip install ruff
+          ruff check .
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: |
+          pytest --ignore=tests/test_release_process.py
+
+
+  deploy:
+
+    needs: ci
+
+    if: >-
+      github.repository != 'wongks2005/ai-co-scientist-old' &&
+      github.ref == 'refs/heads/main'
+
+    runs-on:
+      - self-hosted
+
+    steps:
+
+      - name: Update local repository
+        run: |
+          cd /home/server2/ai-co-scientist
+          git fetch origin main
+
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git stash push -m "pre-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+            backup_branch="backup/pre-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            git branch "$backup_branch" HEAD
+            echo "Saved previous deployment commit on $backup_branch"
+          fi
+
+          git checkout main
+          git reset --hard origin/main
+
+      - name: Install/update dependencies
+        run: |
+          cd /home/server2/ai-co-scientist
+          ./venv/bin/python -m pip install --upgrade pip
+          ./venv/bin/python -m pip install -r requirements.txt
+
+      - name: Restart AI Co-Scientist
+        run: |
+          sudo systemctl restart ai-co-scientist.service
+
+      - name: Verify application health
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent http://127.0.0.1:7860/ > /dev/null; then
+              echo "AI Co-Scientist answered its first health probe."
+              break
+            fi
+            echo "Waiting for AI Co-Scientist (${attempt}/12)..."
+            sleep 5
+          done
+
+          sleep 10
+          if systemctl is-active --quiet ai-co-scientist.service && \
+             curl --fail --silent http://127.0.0.1:7860/ > /dev/null; then
+            echo "AI Co-Scientist stayed healthy after startup."
+            exit 0
+          fi
+
+          systemctl status ai-co-scientist.service --no-pager || true
+          journalctl -u ai-co-scientist.service -n 100 --no-pager || true
+          exit 1
