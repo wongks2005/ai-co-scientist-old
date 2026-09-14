@@ -1,7 +1,20 @@
 import logging
+from pathlib import Path
 from typing import Dict
 
 import yaml
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_environment(dotenv_path: Path = PROJECT_ROOT / ".env") -> None:
+    """Load local environment overrides before application configuration is read."""
+    load_dotenv(dotenv_path=dotenv_path, override=False)
+
+
+load_environment()
 
 
 def load_config(config_path: str = "config.yaml") -> Dict:
