@@ -166,6 +166,30 @@ def test_run_cycle_with_progress_streams_active_status(gradio_app_module, monkey
     assert gradio_app_module.global_context.iteration_number == 1
 
 
+def test_execute_cycle_writes_unicode_to_log(gradio_app_module, monkeypatch, tmp_path):
+    from app.models import ContextMemory, ResearchGoal
+
+    monkeypatch.chdir(tmp_path)
+
+    class UnicodeSupervisor:
+        def run_cycle(self, research_goal, context):
+            return {
+                "status": "done",
+                "steps": {
+                    "generation": {
+                        "hypotheses": [{"id": "H1", "title": "β hypothesis", "text": "text"}]
+                    }
+                },
+            }
+
+    result = gradio_app_module.execute_cycle(
+        ResearchGoal(description="Study β materials"), ContextMemory(), UnicodeSupervisor()
+    )
+
+    assert result["status"].startswith("✅ Cycle 1 completed successfully")
+    assert "Study β materials" in open(result["log_file"], encoding="utf-8").read()
+
+
 def test_run_cycle_with_progress_times_out(gradio_app_module, monkeypatch, tmp_path):
     from app.models import ContextMemory, ResearchGoal
     from app.run_store import RUNS_DIR_ENV
