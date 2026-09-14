@@ -100,6 +100,12 @@ class ArxivSearchTool:
 
             return papers
 
+        except arxiv.HTTPError as e:
+            if getattr(e, "status", None) == 429:
+                logger.warning("ArXiv rate limit reached for query %r; continuing without references.", query)
+                return []
+            logger.error("ArXiv search failed for query %r: %s", query, e, exc_info=True)
+            return []
         except Exception as e:
             logger.error(f"ArXiv search failed for query '{query}': {e}", exc_info=True)
             return []

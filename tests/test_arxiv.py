@@ -5,6 +5,7 @@ arXiv API is marked `network` (run with `make test-all`).
 """
 
 import pytest
+import arxiv
 
 from app.tools.arxiv_search import ArxivSearchTool, get_categories_for_field
 
@@ -14,6 +15,22 @@ from app.tools.arxiv_search import ArxivSearchTool, get_categories_for_field
 def test_known_fields_map_to_categories():
     assert len(get_categories_for_field("computer_science")) > 0
     assert len(get_categories_for_field("physics")) > 0
+
+
+def test_rate_limit_returns_no_papers_without_traceback(caplog):
+    tool = ArxivSearchTool(max_results=5)
+
+    def raise_rate_limit(_search):
+        raise arxiv.HTTPError("https://export.arxiv.org/api/query", 0, 429)
+
+    tool.client.results = raise_rate_limit
+
+    with caplog.at_level("WARNING"):
+        papers = tool.search_papers("sustainable materials")
+
+    assert papers == []
+    assert "rate limit reached" in caplog.text.lower()
+    assert "traceback" not in caplog.text.lower()
 
 
 # --- Live arXiv API ---
