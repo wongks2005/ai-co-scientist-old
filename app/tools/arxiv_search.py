@@ -1,15 +1,11 @@
 import logging
-import os
 import re
-import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import arxiv
 
 logger = logging.getLogger(__name__)
-ARXIV_RATE_LIMIT_COOLDOWN_SECONDS = float(os.getenv("ARXIV_RATE_LIMIT_COOLDOWN_SECONDS", "60"))
-_arxiv_rate_limit_until = 0.0
 
 
 class ArxivSearchTool:
@@ -38,19 +34,11 @@ class ArxivSearchTool:
         Returns:
             List of paper dictionaries with metadata
         """
-        global _arxiv_rate_limit_until
 
         if max_results is None:
             max_results = self.max_results
 
-        cooldown_remaining = _arxiv_rate_limit_until - time.monotonic()
-        if cooldown_remaining > 0:
-            logger.warning(
-                "Skipping ArXiv search for query %r; rate-limit cooldown has %.1f seconds remaining.",
-                query,
-                cooldown_remaining,
-            )
-            return []
+
 
         # Build search query with category filter if provided
         search_query = query
@@ -74,6 +62,7 @@ class ArxivSearchTool:
             logger.debug(f"Expanded search query: '{search_query}'")
 
         try:
+            import time
             start_time = time.time()
 
             search = arxiv.Search(
@@ -115,12 +104,7 @@ class ArxivSearchTool:
 
         except arxiv.HTTPError as e:
             if getattr(e, "status", None) == 429:
-                _arxiv_rate_limit_until = time.monotonic() + ARXIV_RATE_LIMIT_COOLDOWN_SECONDS
-                logger.warning(
-                    "ArXiv rate limit reached for query %r; skipping further requests for %.1f seconds.",
-                    query,
-                    ARXIV_RATE_LIMIT_COOLDOWN_SECONDS,
-                )
+                logger.warning("ArXiv rate limit reached for query %r; continuing without references.", query)
                 return []
             logger.error("ArXiv search failed for query %r: %s", query, e, exc_info=True)
             return []

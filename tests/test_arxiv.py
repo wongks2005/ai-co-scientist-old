@@ -7,7 +7,7 @@ arXiv API is marked `network` (run with `make test-all`).
 import pytest
 import arxiv
 
-import app.tools.arxiv_search as arxiv_search_module
+
 from app.tools.arxiv_search import ArxivSearchTool, get_categories_for_field
 
 # --- Offline: pure category-mapping logic ---
@@ -20,7 +20,7 @@ def test_known_fields_map_to_categories():
 
 def test_rate_limit_returns_no_papers_without_traceback(caplog):
     tool = ArxivSearchTool(max_results=5)
-    arxiv_search_module._arxiv_rate_limit_until = 0
+
 
     def raise_rate_limit(_search):
         raise arxiv.HTTPError("https://export.arxiv.org/api/query", 0, 429)
@@ -33,46 +33,6 @@ def test_rate_limit_returns_no_papers_without_traceback(caplog):
     assert papers == []
     assert "rate limit reached" in caplog.text.lower()
     assert "traceback" not in caplog.text.lower()
-
-
-def test_rate_limit_cooldown_skips_follow_up_request(monkeypatch, caplog):
-    tool = ArxivSearchTool(max_results=5)
-    arxiv_search_module._arxiv_rate_limit_until = 0
-    monkeypatch.setattr(arxiv_search_module, "ARXIV_RATE_LIMIT_COOLDOWN_SECONDS", 60)
-    calls = 0
-
-    def raise_rate_limit(_search):
-        nonlocal calls
-        calls += 1
-        raise arxiv.HTTPError("https://export.arxiv.org/api/query", 0, 429)
-
-    tool.client.results = raise_rate_limit
-    tool.search_papers("first query")
-    tool.search_papers("second query")
-
-    assert calls == 1
-    assert "cooldown" in caplog.text.lower()
-
-
-def test_rate_limit_cooldown_expires(monkeypatch):
-    tool = ArxivSearchTool(max_results=5)
-    clock = 100.0
-    monkeypatch.setattr(arxiv_search_module.time, "monotonic", lambda: clock)
-    arxiv_search_module._arxiv_rate_limit_until = clock + 60
-    calls = 0
-
-    def return_no_results(_search):
-        nonlocal calls
-        calls += 1
-        return iter(())
-
-    tool.client.results = return_no_results
-    assert tool.search_papers("during cooldown") == []
-    assert calls == 0
-
-    clock = 161.0
-    assert tool.search_papers("after cooldown") == []
-    assert calls == 1
 
 
 # --- Live arXiv API ---
